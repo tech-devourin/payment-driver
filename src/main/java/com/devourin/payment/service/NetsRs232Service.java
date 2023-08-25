@@ -101,7 +101,7 @@ public class NetsRs232Service implements NetsService {
 		}
 
 	}
-	
+
 	@Override
 	public byte[] callTMS(PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException,
 	PortInUseException, IOException {
@@ -144,12 +144,12 @@ public class NetsRs232Service implements NetsService {
 	private byte[] sendMessageOnlyHeader(String functionCode, SerialPort port, int length) throws IOException {
 		byte[] message = createMessage(createMessageHeader(functionCode, netsVersionCode));
 		byte[] response = new byte[length];
-		
+
 		sendAndReceiveMessage(port, message, response);
-		
+
 		return response;
 	}
-	
+
 	private void sendAndReceiveMessage(SerialPort port, byte[] message, byte[] response) throws IOException {
 		port.flushIOBuffers();
 		Rs232Util.sendWithAckCheck(port, message, totalTries);
@@ -171,7 +171,7 @@ public class NetsRs232Service implements NetsService {
 
 		return response;
 	}
-	
+
 	private byte[] performSettlement(SerialPort port) throws IOException {
 		byte[] response = sendMessageOnlyHeader(FunctionCode.SETTLEMENT, port, 1024);
 

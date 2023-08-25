@@ -27,7 +27,7 @@ public class EnvironmentController {
 		Map<String, String> resp = Map.of("terminalId", EnvironmentUtil.getTerminalId());
 		return ResponseEntity.ok(resp);
 	}
-	
+
 	@GetMapping("/serverUrl")
 	public ResponseEntity<?> getServerUrl() {
 		Map<String, String> resp = Map.of("serverUrl", EnvironmentUtil.getServerUrl());

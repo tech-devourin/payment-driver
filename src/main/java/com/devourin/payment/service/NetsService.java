@@ -45,7 +45,7 @@ public interface NetsService {
 		final static String TMS = "84";
 
 	}
-	
+
 	class FieldCodes { // Annex B
 		final static String APPROVEl_CODE = "01";
 		final static String RESPONSE_TEXT = "02";
@@ -128,10 +128,10 @@ public interface NetsService {
 
 	void performSettlements(PaymentDevice paymentDevice)
 			throws DataException, SerialPortInvalidPortException, PortInUseException, IOException;
-	
+
 	byte[] callTMS(PaymentDevice paymentDevice)
 			throws DataException, SerialPortInvalidPortException, PortInUseException, IOException;
-	
+
 	byte[] createMessage(byte[] body);
 
 	String handleResponseExtended(byte[] response) throws DataException;

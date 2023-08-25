@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
+import com.devourin.payment.bean.PaymentDeviceList;
 import com.devourin.payment.exception.DataException;
 import com.devourin.payment.exception.PortInUseException;
 import com.devourin.payment.model.PaymentDevice;
@@ -31,11 +32,14 @@ import com.fazecast.jSerialComm.SerialPortInvalidPortException;
 public class PaymentController {
 
 	@Autowired
-	NetsRs232Service netsServiceRs232;
+	NetsRs232Service netsRs232Service;
 	//	NetsEthernetService netsServiceEthernet = new NetsEthernetService();
 
 	@Autowired
 	SimpMessagingTemplate messagingTemplate;
+	
+	@Autowired
+	PaymentDeviceList paymentDeviceList;
 
 //  // The mapping for this message API is `/app/payment/test`
 //	@MessageMapping("/test")
@@ -44,9 +48,9 @@ public class PaymentController {
 //	}
 
 	@GetMapping("/test")
-	public ResponseEntity<?> test(@RequestBody List<PaymentDevice> paymentDevices) throws PortInUseException, IOException {
+	public ResponseEntity<?> test() throws PortInUseException, IOException {
 
-		byte[] message = ((NetsRs232Service) netsServiceRs232).test(paymentDevices.get(0));
+		byte[] message = ((NetsRs232Service) netsRs232Service).test(paymentDeviceList.getList().get(0));
 
 		return ResponseEntity.ok(Rs232Util.getHexString(message));
 	}
@@ -56,8 +60,8 @@ public class PaymentController {
 		try {
 			validatePaymentInfo(body);
 
-			List<PaymentDevice> paymentDevices = body.getDevices();
 			boolean notPaid = true;
+			List<PaymentDevice> paymentDevices = paymentDeviceList.getList();
 
 			for(int i = 0; i < paymentDevices.size() && notPaid; i++) {
 				PaymentDevice paymentDevice = paymentDevices.get(i);
@@ -92,8 +96,9 @@ public class PaymentController {
 	}
 
 	@PostMapping("/login")
-	public ResponseEntity<?> login(@RequestBody List<PaymentDevice> paymentDevices) {
+	public ResponseEntity<?> login() {
 		List<Map<String, String>> errors = new ArrayList<>();
+		List<PaymentDevice> paymentDevices = paymentDeviceList.getList();
 
 		for(int i = 0; i < paymentDevices.size(); i++) {
 			PaymentDevice paymentDevice = paymentDevices.get(i);
@@ -119,19 +124,19 @@ public class PaymentController {
 		}
 		return ResponseEntity.ok(errors);
 	}
-	
+
 	@GetMapping("/tms")
 	public ResponseEntity<?> callTMS(@RequestBody PaymentDevice paymentDevice) throws SerialPortInvalidPortException, PortInUseException, IOException {
 		try {
 			byte[] message = {};
-			
+
 			switch(paymentDevice.getModel()) {
 			case "NETS":
 				NetsService netsService = getNetsService(paymentDevice, 0);
 				message = netsService.callTMS(paymentDevice);
 				break;
 			}
-			
+
 			return ResponseEntity.ok(Rs232Util.getHexString(message));
 
 		} catch (PortInUseException | IOException | SerialPortInvalidPortException e) {
@@ -141,7 +146,7 @@ public class PaymentController {
 			Map<String, String> err = e.toMap();
 			return ResponseEntity.badRequest().body(err);
 		}
-		
+
 	}
 
 	private void validatePaymentInfo(PaymentInfo body) throws DataException {
@@ -151,15 +156,12 @@ public class PaymentController {
 		if(body.getAmount() == null) {
 			throw new DataException("Missing payment value", "Please send the amount to pay");
 		}
-		if(body.getDevices() == null || body.getDevices().size() == 0) {
-			throw new DataException("Missing device list", "Please send the list of the devices connected to the terminal.");
-		}
 	}
 
 	private NetsService getNetsService(PaymentDevice paymentDevice, int index) throws DataException {
 		switch(paymentDevice.getProtocol()) {
 		case "RS232":
-			return netsServiceRs232;
+			return netsRs232Service;
 
 		case "Ethernet":
 			//return netsServiceEthernet;
