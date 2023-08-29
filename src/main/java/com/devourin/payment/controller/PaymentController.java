@@ -50,9 +50,14 @@ public class PaymentController {
 	@GetMapping("/test")
 	public ResponseEntity<?> test() throws PortInUseException, IOException {
 
-		byte[] message = ((NetsRs232Service) netsRs232Service).test(paymentDeviceList.getList().get(0));
+		byte[] message = netsRs232Service.test(paymentDeviceList.getList().get(0));
 
 		return ResponseEntity.ok(Rs232Util.getHexString(message));
+	}
+	@GetMapping("/test2")
+	public ResponseEntity<?> test2()  {
+		byte[] f = {0x46, 0x43, 0x00, 0x06, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x1C, 0x41, 0x42, 0x00, 0x06, 0x37, 0x38, 0x39, 0x30, 0x31, 0x32, 0x1C};
+		return ResponseEntity.ok(((NetsService) netsRs232Service).getMapFromBody(f));
 	}
 
 	@GetMapping("/createPayment")

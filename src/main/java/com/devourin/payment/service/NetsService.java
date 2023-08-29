@@ -4,6 +4,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
@@ -46,7 +48,7 @@ public interface NetsService {
 
 	}
 
-	class FieldCodes { // Annex B
+	class FieldCode { // Annex B
 		final static String APPROVEl_CODE = "01";
 		final static String RESPONSE_TEXT = "02";
 		final static String TRANSACTION_DATE = "03";
@@ -114,8 +116,13 @@ public interface NetsService {
 
 	}
 
+	class VersionCode {
+		public static final String NETS = "01";
+		public static final String UOB = "02";
+	}
+	
 	static final int totalTries = 3;
-	static final String netsVersionCode = "01";
+	
 
 	void createPayment(PaymentInfo body, PaymentDevice paymentDevice)
 			throws DataException, SerialPortInvalidPortException, PortInUseException, IOException;
@@ -133,8 +140,6 @@ public interface NetsService {
 			throws DataException, SerialPortInvalidPortException, PortInUseException, IOException;
 
 	byte[] createMessage(byte[] body);
-
-	String handleResponseExtended(byte[] response) throws DataException;
 
 	default byte[] createMessageHeader(String functionCode, String versionCode) {
 		ByteArrayOutputStream header = new ByteArrayOutputStream(18);
@@ -169,6 +174,18 @@ public interface NetsService {
 		}
 
 		return bcd;
+	}
+	
+	default int getDecimal(int number) {
+		int dec = 0;
+		int counter = 0;
+		
+		while(number > 0) {
+			dec += (number & 0x0F) * java.lang.Math.pow(10, counter++);
+			number >>= 4;
+		}
+		
+		return dec;
 	}
 
 	default void writeLengthInBcd(ByteArrayOutputStream stream, int length) {
@@ -236,17 +253,62 @@ public interface NetsService {
 	default String bytesToUtf8(byte[] arr) {
 		return new String(arr, StandardCharsets.UTF_8);
 	}
+	
+	default byte[] getOnlyBodyFromMessage(byte[] message) {
+		int i;
+		for(i = 0; i < message.length; i++) {
+			if(message[i] == 0x1C) {
+				i++;
+				break;
+			}
+		}
+		
+		return Arrays.copyOf(message, i);
+	}
+	
+	default Map<String, byte[]> getMapFromBody(byte[] body) {
+		
+		Map<String, byte[]> map = new HashMap<>();
+		int messageLength = body.length;
+		int i = 0;
+		while(i < messageLength) {
+			String fieldCode = bytesToUtf8(Arrays.copyOfRange(body, i, i + 2));
+			int len = getDecimal(((int) body[i + 2]) << 8) | body[i + 3];
+			
+			i += 4;
+			
+			map.put(fieldCode, Arrays.copyOfRange(body, i, i + len));
+			
+			i += len + 1;
+		}
+		
+		return map;
+	}
+	
+	default Map<String, byte[]> getBodyMapFromMessage(byte[] message) {
+		return getMapFromBody(getOnlyBodyFromMessage(message));
+	}
+	
+	byte[] generateHomogenisedMessage(byte[] message);
+
+	String handleResponseExtended(String respCode) throws DataException;
+	
+	default void handleTransactionResponse(Map<String, byte[]> bodyMap) {
+		// TODO
+	}
 
 	/**
 	 * 
-	 * @param responseCode
-	 * @return <code>true</code> if the request was approved, <code>false</code> if none of the cases were hit.
+	 * @param response The homogenised response that needs to be handled
+	 * @return <b>String</b>
 	 * @throws DataException An error describing what the response was, if the request was not approved and one of the cases was hit. This usually describes an error in the setup of the terminal, which needs to be fixed before proper usage. It could also describe an error made by faulty code.
 	 */
-	default boolean handleResponseCode(String responseCode) throws DataException {
-		switch(responseCode) {
+	default String handleResponse(byte[] response) throws DataException {
+		String respCode = bytesToUtf8(Arrays.copyOfRange(response, 14, 16));
+		
+		switch(respCode) {
 		case ResponseCode.APPROVED:
-			return true;
+			return ResponseCode.APPROVED;
 
 		case ResponseCode.FUNCTION_NOT_AVAILABLE:
 			throw new DataException("Function not available", "The function specified does not exist.");
@@ -276,7 +338,7 @@ public interface NetsService {
 			throw new DataException("Settlement required", "Terminal requires settlement for all acquirers.");
 
 		default:
-			return false;
+			return handleResponseExtended(respCode);
 		}
 	}
 }

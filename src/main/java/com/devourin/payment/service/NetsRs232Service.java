@@ -3,6 +3,7 @@ package com.devourin.payment.service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.function.Predicate;
 
 import org.springframework.stereotype.Service;
@@ -25,7 +26,7 @@ public class NetsRs232Service implements NetsService {
 		SerialPort port = connectPort(paymentDevice.getAddress());
 
 		try {
-			byte[] message = requestDeviceStatus(port);
+			byte[] message = getLastApprovedTransaction(port);
 			return message;
 		} catch (Exception e) {
 			throw e;
@@ -42,7 +43,7 @@ public class NetsRs232Service implements NetsService {
 		try {
 			byte[] resp = requestDeviceStatus(port);
 
-			handleResponseExtended(resp);
+			handleResponse(resp);
 
 			//			byte[] message = createRs232Message(new byte[1]); // TODO
 			//			byte[] response = new byte[1]; // TODO: set response size
@@ -65,7 +66,7 @@ public class NetsRs232Service implements NetsService {
 		SerialPort port = connectPort(paymentDevice.getAddress());
 		// If there is an error while opening the port, there is no need to close it
 		try {
-			handleResponseExtended(logonToDevice(port));
+			handleResponse(logonToDevice(port));
 
 			// TODO
 
@@ -87,9 +88,12 @@ public class NetsRs232Service implements NetsService {
 
 		try {
 			byte[] message = getLastApprovedTransaction(port);
-			handleResponseExtended(message);
+			
+			handleResponse(message);
+			
+			Map<String, byte[]> mapBody = getBodyMapFromMessage(message);
 
-			// TODO
+			handleTransactionResponse(mapBody);
 
 			return;
 
@@ -127,7 +131,7 @@ public class NetsRs232Service implements NetsService {
 
 		try {
 			byte[] message = performSettlement(port);
-			handleResponseExtended(message);
+			handleResponse(message);
 
 			// TODO
 
@@ -142,7 +146,7 @@ public class NetsRs232Service implements NetsService {
 	}
 
 	private byte[] sendMessageOnlyHeader(String functionCode, SerialPort port, int length) throws IOException {
-		byte[] message = createMessage(createMessageHeader(functionCode, netsVersionCode));
+		byte[] message = createMessage(createMessageHeader(functionCode, VersionCode.NETS));
 		byte[] response = new byte[length];
 
 		sendAndReceiveMessage(port, message, response);
@@ -165,19 +169,11 @@ public class NetsRs232Service implements NetsService {
 	}
 
 	private byte[] getLastApprovedTransaction(SerialPort port) throws IOException {
-		byte[] response = sendMessageOnlyHeader(FunctionCode.GET_LAST_APPROVED_TRANSACTION, port, 512);
-
-		response = Rs232Util.truncateMessage(response);
-
-		return response;
+		return sendMessageOnlyHeader(FunctionCode.GET_LAST_APPROVED_TRANSACTION, port, 512);
 	}
 
 	private byte[] performSettlement(SerialPort port) throws IOException {
-		byte[] response = sendMessageOnlyHeader(FunctionCode.SETTLEMENT, port, 1024);
-
-		response = Rs232Util.truncateMessage(response);
-
-		return response;
+		return sendMessageOnlyHeader(FunctionCode.SETTLEMENT, port, 1024);
 	}
 
 	@Override
@@ -194,20 +190,17 @@ public class NetsRs232Service implements NetsService {
 		message.write(Rs232Util.ETX);
 
 		// Setting LRC
-
-
 		return addLrc(message, 1);  // Start from 1 because we do not count STX
+	}
+	
+	@Override
+	public byte[] generateHomogenisedMessage(byte[] message) {
+		byte[] newArray = Rs232Util.truncateMessage(message);
+		return Arrays.copyOfRange(newArray, 3, message.length - 1);
 	}
 
 	@Override
-	public String handleResponseExtended(byte[] response) throws DataException {
-		String respCode = bytesToUtf8(Arrays.copyOfRange(response, 17, 19));
-
-		if(handleResponseCode(respCode)) {
-			return ResponseCode.APPROVED;
-		}
-
-		// Come here if no error was thrown in handleResponseCode, or if the default case was hit
+	public String handleResponseExtended(String respCode) throws DataException {
 
 		switch(respCode) {
 		case ResponseCode.AUTHORISATATION_REQUEST_DECLINED:
@@ -274,6 +267,8 @@ public class NetsRs232Service implements NetsService {
 				break;
 			}
 		}
+		
+		response = generateHomogenisedMessage(response);
 	}
 
 }

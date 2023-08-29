@@ -144,7 +144,7 @@ public class Rs232Util {
 		StringBuilder sb = new StringBuilder();
 		for(byte b : message) {
 
-			if(b < 16) sb.append("0");
+			if(b < 16 && b >= 0) sb.append("0");
 
 			sb.append(String.format("%x ", b));
 		}
