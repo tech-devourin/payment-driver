@@ -1,4 +1,4 @@
-package com.devourin.printing;
+package com.devourin.payment;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

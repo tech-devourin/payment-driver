@@ -21,20 +21,6 @@ public class NetsRs232Service implements NetsService {
 
 	private final Predicate<byte[]> checkLrc = (arr) -> checkLrc(arr, 1);
 
-	public byte[] test(PaymentDevice paymentDevice) throws PortInUseException, SerialPortInvalidPortException, IOException {
-
-		SerialPort port = connectPort(paymentDevice.getAddress());
-
-		try {
-			byte[] message = getLastApprovedTransaction(port);
-			return message;
-		} catch (Exception e) {
-			throw e;
-		} finally {
-			port.closePort();
-		}
-	}
-
 	@Override
 	public void createPayment(PaymentInfo body, PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException,
 	PortInUseException, IOException {
