@@ -11,8 +11,11 @@ This project was made with Spring Boot v2.7.14.
 
 ### Payment Device Format
  Please make sure the devices are in the following format:
- {
-    "protocol": "", // As of August 2023, the only valid value is "RS232"
+```json
+{
+    "protocol": "",
     "address": "",
-    "model": "" // As of August 2023, the only valid value is "NETS"
+    "model": ""
 }
+```
+As of August 2023, the only valid value for `protocol` is `"RS232"` and the only valid value for `model` is `"NETS"`
