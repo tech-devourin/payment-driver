@@ -1,8 +1,10 @@
 package com.devourin.payment.model;
 
+import com.devourin.payment.constant.PaymentMethod;
+
 public class PaymentInfo {
 	private Long amount;
-	private String paymentMethod;
+	private PaymentMethod paymentMethod;
 
 	public Long getAmount() {
 		return amount;
@@ -10,10 +12,10 @@ public class PaymentInfo {
 	public void setAmount(Long amount) {
 		this.amount = amount;
 	}
-	public String getPaymentMethod() {
+	public PaymentMethod getPaymentMethod() {
 		return paymentMethod;
 	}
-	public void setPaymentMethod(String paymentMethod) {
+	public void setPaymentMethod(PaymentMethod paymentMethod) {
 		this.paymentMethod = paymentMethod;
 	}
 }

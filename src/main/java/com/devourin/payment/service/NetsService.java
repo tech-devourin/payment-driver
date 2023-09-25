@@ -3,12 +3,17 @@ package com.devourin.payment.service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.devourin.payment.constant.Model;
+import com.devourin.payment.constant.PaymentMethod;
 import com.devourin.payment.exception.DataException;
 import com.devourin.payment.exception.PortInUseException;
 import com.devourin.payment.model.PaymentDevice;
@@ -20,131 +25,172 @@ import com.fazecast.jSerialComm.SerialPortInvalidPortException;
 @Service
 public interface NetsService {
 
+	static Logger logger = LoggerFactory.getLogger(NetsService.class);
+
+	static byte[] emptyArray = {};
+
 	class ResponseCode { // Reduce magic numbers
-		final static String APPROVED = "00";
-		final static String FUNCTION_NOT_AVAILABLE = "01"; // Feature not available for POS to use
-		final static String TERMINAL_IN_PRE_ACTIVATION = "02"; // Contact NETS. The terminal is not ready to receive any function request.
-		final static String FAULTY_IUC = "03"; // Check that the contactless reader is connected
-		final static String FAULTY_IUR = "04"; // Check that the contact reader is connected
-		final static String THIRD_PARTY_APP_NOT_AVAILABLE = "05"; // Check with terminal provider on application loading.
-		final static String MANDATORY_FIELD_CODE_MISSING = "20"; // Check the message being sent to the terminal.
-		final static String AUTHORISATATION_REQUEST_DECLINED = "51"; // Refer to the field code HC for more information
-		final static String UNABLE_TO_READ_CARD = "C0"; // Check the card was inserted/swiped/tapped correctly
-		final static String INVALID_CARD = "C1"; // Make sure the card used was valid
-		final static String TERMINAL_CONNECTION_PROBLEM = "HS"; // Check terminal connectivity (SIM Card, Ethernet etc.)
-		final static String LOGON_REQUIRED = "LR"; // Please logon to the terminal
-		final static String AUTHORISATION_REQUEST_TIMEOUT = "TO"; // Contact NETS. Terminal did not receive a response while sending an authorisation request.
-		final static String CALLBACK_DISPLAY_MESSAGE = "Z0"; // Contact NETS. Terminal did not receive a response while sending an authorisation request.
-		final static String CALLBACK_CARD_APP_SELECTION = "Z1"; // Prompt user to select which credit card scheme app should be used for the application
-		final static String SETTLEMENT_REQUIRED = "SF"; // Terminal requires settlement for all acquirers.
+		private ResponseCode() {}
+
+		static final String APPROVED = "00";
+		static final String FUNCTION_NOT_AVAILABLE = "01"; // Feature not available for POS to use
+		static final String TERMINAL_IN_PRE_ACTIVATION = "02"; // Contact NETS. The terminal is not ready to receive any function request.
+		static final String FAULTY_IUC = "03"; // Check that the contactless reader is connected
+		static final String FAULTY_IUR = "04"; // Check that the contact reader is connected
+		static final String THIRD_PARTY_APP_NOT_AVAILABLE = "05"; // Check with terminal provider on application loading.
+		static final String MANDATORY_FIELD_CODE_MISSING = "20"; // Check the message being sent to the terminal.
+		static final String AUTHORISATATION_REQUEST_DECLINED = "51"; // Refer to the field code HC for more information
+		static final String UNABLE_TO_READ_CARD = "C0"; // Check the card was inserted/swiped/tapped correctly
+		static final String INVALID_CARD = "C1"; // Make sure the card used was valid
+		static final String TERMINAL_CONNECTION_PROBLEM = "HS"; // Check terminal connectivity (SIM Card, Ethernet etc.)
+		static final String LOGON_REQUIRED = "LR"; // Please logon to the terminal
+		static final String AUTHORISATION_REQUEST_TIMEOUT = "TO"; // Contact NETS. Terminal did not receive a response while sending an authorisation request.
+		static final String CALLBACK_DISPLAY_MESSAGE = "Z0"; // Contact NETS. Terminal did not receive a response while sending an authorisation request.
+		static final String CALLBACK_CARD_APP_SELECTION = "Z1"; // Prompt user to select which credit card scheme app should be used for the application
+		static final String SETTLEMENT_REQUIRED = "SF"; // Terminal requires settlement for all acquirers.
+		static final String CANCELLED_BY_USER = "US"; // Transaction cancelled by the user
 	}
 
 	class FunctionCode { // Reduce magic numbers
-		final static String REQUEST_TERMINAL_STATUS = "55";
-		final static String GET_LAST_APPROVED_TRANSACTION = "56";
-		final static String LOGON = "80";
-		final static String SETTLEMENT = "81";
-		final static String TMS = "84";
+		private FunctionCode() {}
 
+		static final String REQUEST_TERMINAL_STATUS = "55";
+		static final String GET_LAST_APPROVED_TRANSACTION = "56";
+		static final String PURCHASE = "00";
+		static final String LOGON = "80";
+		static final String SETTLEMENT = "81";
+		static final String TMS = "84";
+		static final String NETS_PURCHASE = "30";
+		static final String CREDIT_CARD_PURCHASE = "I0";
+		static final String UPI_PURCHASE = "31";
+		static final String BCA_PURCHASE = "65";
+		static final String RUPAY_PURCHASE = "6A";
+		static final String MYDEBIT_PURCHASE = "6B";
 	}
 
 	class FieldCode { // Annex B
-		final static String APPROVEl_CODE = "01";
-		final static String RESPONSE_TEXT = "02";
-		final static String TRANSACTION_DATE = "03";
-		final static String TRANSACTION_TIME = "04";
-		final static String TERMINAL_ID = "16";
-		final static String AUTHORIZATION_ID = "17";
-		final static String CARD_NUMBER = "30";
-		final static String TRANSACTION_AMOUNT = "40";
-		final static String SERVICE_FEE = "41";
-		final static String CASH_BACK_AMOUNT = "42";
-		final static String LOYALTY_REDEMPTION = "43";
-		final static String STAN = "65";
-		final static String ACQUIRER_NAME = "9G";
-		final static String INVOICE_NUMBER = "9H";
-		final static String TRANSACTION_STATUS = "CP";
-		final static String MERCHANT_ID = "D1";
-		final static String TRANSACTION_TYPE_INDICATOR = "T2";
-		final static String ENHANCED_ECR_REFERENCE_NUMBER = "HD";
-		final static String MERCHANT_NAME_AND_ADDRESS = "D0";
-		final static String RETRIEVAL_REFERENCE_NUMBER = "D3";
-		final static String CARD_NAME = "L7";
-		final static String POS_MESSAGE = "L5";
-		final static String RESPONSE_MESSAGE_I = "R0";
-		final static String RESPONSE_MESSAGE_II = "R1";
-		final static String LOYALTY_PROGRAM_NAME = "L1";
-		final static String LOYALTY_TYPE = "L2";
-		final static String REDEMPTION_VALUE = "L3";
-		final static String CURRENT_BALANCE = "L4";
-		final static String LOYALTY_MARKETING_MESSAGE = "L6";
-		final static String LOYALTY_PROGRAM_EXP_DATE = "L8";
-		final static String LOYALTY_MARKETING_MESSAGE1 = "L9";
-		final static String HOST_RESPONSE_CODE = "HC";
-		final static String CARD_ENTRY_MODE = "CN";
-		final static String RECEIPT_TEXT_FORMAT = "RP";
-		final static String MOBILE_NUMBER = "MN";
-		final static String LAST_AMOUNT = "F7";
-		final static String CALLBACK_FUNCTION_TYPE = "M0";
-		final static String MESSAGE_PAYLOAD = "M7";
-		final static String MESSAGE_INDEX = "M1";
-		final static String MESSAGE = "M2";
-		final static String NUMBER_OF_SELECTION = "M3";
-		final static String SELECTION_INDEX = "M4";
-		final static String SELECTION_LABEL = "M5";
-		final static String	SELECTION_NAME = "M6";
-		final static String SCHEME_CATEGORY = "9Q";
-		final static String CARD_TYPE = "9M";
-		final static String CARD_ISSUER_NAME = "D2";
-		final static String POS_ID = "9I";
-		final static String TRANSACTION_ID = "A1";
-		final static String CARD_BALANCE = "HE";
-		final static String FOREIGN_AMOUNT = "FA";
-		final static String FOREIGN_MID = "F0";
-		final static String CURRENCY_NAME = "F2";
-		final static String CARD_HOLDER_NAME = "D6";
-		final static String RFU4 = "31"; // ALSO CARD EXPIRY DATE
-		final static String AID ="9A";
-		final static String TRANSACTION_CERTIFICATE = "9D";
-		final static String APPLICATION_PROFILE = "9B";
-		final static String CID = "9C";
-		final static String TSI = "9F";
-		final static String TVR = "9E";
-		final static String BATCH_NUMBER = "50";
-		final static String PROCESSING_GATEWAY ="D7";
-		final static String OFFLINE_TXN_TYPE = "O1";
+		private FieldCode() {}
+
+		static final String APPROVAL_CODE = "01";
+		static final String RESPONSE_TEXT = "02";
+		static final String TRANSACTION_DATE = "03";
+		static final String TRANSACTION_TIME = "04";
+		static final String TERMINAL_ID = "16";
+		static final String AUTHORIZATION_ID = "17";
+		static final String CARD_NUMBER = "30";
+		static final String TRANSACTION_AMOUNT = "40";
+		static final String SERVICE_FEE = "41";
+		static final String CASH_BACK_AMOUNT = "42";
+		static final String LOYALTY_REDEMPTION = "43";
+		static final String STAN = "65";
+		static final String ACQUIRER_NAME = "9G";
+		static final String INVOICE_NUMBER = "9H";
+		static final String TRANSACTION_STATUS = "CP";
+		static final String MERCHANT_ID = "D1";
+		static final String TRANSACTION_TYPE_INDICATOR = "T2";
+		static final String ENHANCED_ECR_REFERENCE_NUMBER = "HD";
+		static final String MERCHANT_NAME_AND_ADDRESS = "D0";
+		static final String RETRIEVAL_REFERENCE_NUMBER = "D3";
+		static final String CARD_NAME = "L7";
+		static final String POS_MESSAGE = "L5";
+		static final String RESPONSE_MESSAGE_I = "R0";
+		static final String RESPONSE_MESSAGE_II = "R1";
+		static final String LOYALTY_PROGRAM_NAME = "L1";
+		static final String LOYALTY_TYPE = "L2";
+		static final String REDEMPTION_VALUE = "L3";
+		static final String CURRENT_BALANCE = "L4";
+		static final String LOYALTY_MARKETING_MESSAGE = "L6";
+		static final String LOYALTY_PROGRAM_EXP_DATE = "L8";
+		static final String LOYALTY_MARKETING_MESSAGE1 = "L9";
+		static final String HOST_RESPONSE_CODE = "HC";
+		static final String CARD_ENTRY_MODE = "CN";
+		static final String RECEIPT_TEXT_FORMAT = "RP";
+		static final String MOBILE_NUMBER = "MN";
+		static final String LAST_AMOUNT = "F7";
+		static final String CALLBACK_FUNCTION_TYPE = "M0";
+		static final String MESSAGE_PAYLOAD = "M7";
+		static final String MESSAGE_INDEX = "M1";
+		static final String MESSAGE = "M2";
+		static final String NUMBER_OF_SELECTION = "M3";
+		static final String SELECTION_INDEX = "M4";
+		static final String SELECTION_LABEL = "M5";
+		static final String	SELECTION_NAME = "M6";
+		static final String SCHEME_CATEGORY = "9Q";
+		static final String CARD_TYPE = "9M";
+		static final String CARD_ISSUER_NAME = "D2";
+		static final String POS_ID = "9I";
+		static final String TRANSACTION_ID = "A1";
+		static final String CARD_BALANCE = "HE";
+		static final String FOREIGN_AMOUNT = "FA";
+		static final String FOREIGN_MID = "F0";
+		static final String CURRENCY_NAME = "F2";
+		static final String CARD_HOLDER_NAME = "D6";
+		static final String RFU4 = "31"; // ALSO CARD EXPIRY DATE
+		static final String AID ="9A";
+		static final String TRANSACTION_CERTIFICATE = "9D";
+		static final String APPLICATION_PROFILE = "9B";
+		static final String CID = "9C";
+		static final String TSI = "9F";
+		static final String TVR = "9E";
+		static final String BATCH_NUMBER = "50";
+		static final String PROCESSING_GATEWAY ="D7";
+		static final String OFFLINE_TXN_TYPE = "O1";
 
 	}
 
 	class VersionCode {
+		private VersionCode() {}
+
 		public static final String NETS = "01";
 		public static final String UOB = "02";
 	}
-	
-	static final int totalTries = 3;
-	
 
-	void createPayment(PaymentInfo body, PaymentDevice paymentDevice)
-			throws DataException, SerialPortInvalidPortException, PortInUseException, IOException;
+	class Codes {
+		private String function;
+		private String version;
 
-	void logonToDevice(PaymentDevice paymentDevice)
-			throws DataException, SerialPortInvalidPortException, PortInUseException, IOException;
+		public String getFunction() {
+			return function;
+		}
+		public void setFunction(String function) {
+			this.function = function;
+		}
+		public String getVersion() {
+			return version;
+		}
+		public void setVersion(String version) {
+			this.version = version;
+		}
+	}
 
-	void getLastApprovedTransaction(PaymentDevice paymentDevice)
-			throws DataException, SerialPortInvalidPortException, PortInUseException, IOException;
+	static final int TOTAL_TRIES = 3;
 
-	void performSettlements(PaymentDevice paymentDevice)
-			throws DataException, SerialPortInvalidPortException, PortInUseException, IOException;
+	void createPayment(PaymentInfo body, PaymentDevice paymentDevice, ListeningService listeningService)
+			throws SerialPortInvalidPortException, PortInUseException, IOException;
 
-	byte[] callTMS(PaymentDevice paymentDevice)
-			throws DataException, SerialPortInvalidPortException, PortInUseException, IOException;
+	void requestDeviceStatus(PaymentDevice paymentDevice, ListeningService listeningService)
+			throws SerialPortInvalidPortException, PortInUseException, IOException;
+
+	void logonToDevice(PaymentDevice paymentDevice, ListeningService listeningService)
+			throws SerialPortInvalidPortException, PortInUseException, IOException;
+
+	void getLastApprovedTransaction(PaymentDevice paymentDevice, ListeningService listeningService)
+			throws SerialPortInvalidPortException, PortInUseException, IOException;
+
+	void performSettlements(PaymentDevice paymentDevice, ListeningService listeningService)
+			throws SerialPortInvalidPortException, PortInUseException, IOException;
+
+	void callTMS(PaymentDevice paymentDevice, ListeningService listeningService)
+			throws SerialPortInvalidPortException, PortInUseException, IOException;
 
 	byte[] createMessage(byte[] body);
 
-	default byte[] createMessageHeader(String functionCode, String versionCode) {
+	PaymentMessagingService getPaymentMessagingService();
+
+	default byte[] createMessageHeader(String functionCode, String versionCode, Map<Model, Map<String, Long>> paymentIdMap) {
 		ByteArrayOutputStream header = new ByteArrayOutputStream(18);
 
-		header.write(generateEcn(), 0, 12); // ECN is always 12 bytes
+		header.write(generateEcn(paymentIdMap), 0, 12); // ECN is always 12 bytes
 		header.write(getUtf8Bytes(functionCode), 0, 2); // Function Code is always 2 bytes
 		header.write(getUtf8Bytes(versionCode), 0, 2); // Version Code is always 2 bytes
 		addRFU(header);
@@ -175,16 +221,16 @@ public interface NetsService {
 
 		return bcd;
 	}
-	
+
 	default int getDecimal(int number) {
 		int dec = 0;
 		int counter = 0;
-		
+
 		while(number > 0) {
 			dec += (number & 0x0F) * java.lang.Math.pow(10, counter++);
 			number >>= 4;
 		}
-		
+
 		return dec;
 	}
 
@@ -195,8 +241,14 @@ public interface NetsService {
 		stream.write((byte) bcd); // tens and ones
 	}
 
-	default byte[] generateEcn() {
-		return getUtf8Bytes(RandomUtil.generateRandomIdWithCurrentTime(2));
+	default byte[] generateEcn(Map<Model, Map<String, Long>> paymentIdMap) {
+		String ecn = RandomUtil.generateRandomIdWithCurrentTime(2);
+		Map<String, Long> map = paymentIdMap.get(Model.NETS);
+		while(map.containsKey(ecn)) {
+			ecn = RandomUtil.generateRandomIdWithCurrentTime(2);
+		}
+		map.put(ecn, Instant.now().getEpochSecond());
+		return getUtf8Bytes(ecn);
 	}
 
 	default void addRFU(ByteArrayOutputStream stream) {
@@ -253,7 +305,7 @@ public interface NetsService {
 	default String bytesToUtf8(byte[] arr) {
 		return new String(arr, StandardCharsets.UTF_8);
 	}
-	
+
 	default byte[] getOnlyBodyFromMessage(byte[] message) {
 		int i;
 		for(i = 0; i < message.length; i++) {
@@ -262,39 +314,80 @@ public interface NetsService {
 				break;
 			}
 		}
-		
+
 		return Arrays.copyOf(message, i);
 	}
-	
+
+	default void handleAsyncMessageHandling(ListeningService listeningService, byte[] message, Map<Model, Map<String, Long>> paymentIdMap, PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException, PortInUseException, IOException {
+		message = generateHomogenisedMessage(message);
+
+		String ecn = bytesToUtf8(Arrays.copyOfRange(message, 0, 12));
+
+		String functionCode = bytesToUtf8(Arrays.copyOfRange(message, 12, 14));
+
+		Map<String, Long> ecnMap = paymentIdMap.get(Model.NETS);
+
+		if(!ecnMap.containsKey(ecn)) {
+			return;
+		}
+
+		ecnMap.remove(ecn);
+
+		handleResponse(message, paymentDevice, listeningService);
+
+		switch(functionCode) {
+		case FunctionCode.SETTLEMENT:
+		case FunctionCode.TMS:
+			logonToDevice(paymentDevice, listeningService);
+			return;
+
+		case FunctionCode.LOGON:
+			requestDeviceStatus(paymentDevice, listeningService);
+			return;
+
+		case FunctionCode.NETS_PURCHASE:
+		case FunctionCode.CREDIT_CARD_PURCHASE:
+		case FunctionCode.UPI_PURCHASE:
+		case FunctionCode.BCA_PURCHASE:
+		case FunctionCode.RUPAY_PURCHASE:
+		case FunctionCode.MYDEBIT_PURCHASE:
+			getPaymentMessagingService().sendWebsocketSuccess();
+			return;
+
+		default:
+		}
+	}
+
 	default Map<String, byte[]> getMapFromBody(byte[] body) {
-		
+
+		if(logger.isInfoEnabled()) {
+			logger.info(String.format("Received: %s", Rs232Util.getHexString(body)));
+		}
 		Map<String, byte[]> map = new HashMap<>();
 		int messageLength = body.length;
 		int i = 0;
 		while(i < messageLength) {
 			String fieldCode = bytesToUtf8(Arrays.copyOfRange(body, i, i + 2));
-			int len = getDecimal(((int) body[i + 2]) << 8) | body[i + 3];
-			
+			int len = getDecimal((body[i + 2]) << 8) | body[i + 3];
+
 			i += 4;
-			
+
 			map.put(fieldCode, Arrays.copyOfRange(body, i, i + len));
-			
+
 			i += len + 1;
 		}
-		
+
 		return map;
 	}
-	
+
 	default Map<String, byte[]> getBodyMapFromMessage(byte[] message) {
 		return getMapFromBody(getOnlyBodyFromMessage(message));
 	}
-	
+
 	byte[] generateHomogenisedMessage(byte[] message);
 
-	String handleResponseExtended(String respCode) throws DataException;
-	
 	default void handleTransactionResponse(Map<String, byte[]> bodyMap) {
-		// TODO
+
 	}
 
 	/**
@@ -302,25 +395,39 @@ public interface NetsService {
 	 * @param response The homogenised response that needs to be handled
 	 * @return <b>String</b>
 	 * @throws DataException An error describing what the response was, if the request was not approved and one of the cases was hit. This usually describes an error in the setup of the terminal, which needs to be fixed before proper usage. It could also describe an error made by faulty code.
+	 * @throws IOException 
+	 * @throws PortInUseException 
+	 * @throws SerialPortInvalidPortException 
 	 */
-	default String handleResponse(byte[] response) throws DataException {
+	default String handleResponse(byte[] response, PaymentDevice paymentDevice, ListeningService listeningService) throws DataException, SerialPortInvalidPortException, PortInUseException, IOException {
 		String respCode = bytesToUtf8(Arrays.copyOfRange(response, 14, 16));
-		
+
 		switch(respCode) {
 		case ResponseCode.APPROVED:
 			return ResponseCode.APPROVED;
 
-		case ResponseCode.FUNCTION_NOT_AVAILABLE:
-			throw new DataException("Function not available", "The function specified does not exist.");
+		case ResponseCode.SETTLEMENT_REQUIRED:
+			performSettlements(paymentDevice, listeningService);
+			throw new DataException("Transaction declined", "The transaction was declined. Please try again.");
+
+		case ResponseCode.CANCELLED_BY_USER:
+		case ResponseCode.UNABLE_TO_READ_CARD:
+		case ResponseCode.INVALID_CARD:
+		case ResponseCode.AUTHORISATATION_REQUEST_DECLINED:
+			throw new DataException("Transaction declined", "The transaction was declined. Please try again.");
 
 		case ResponseCode.TERMINAL_IN_PRE_ACTIVATION:
-			throw new DataException("Terminal in pre-activation", "The terminal is not ready to receive any function request. Contact NETS.");
-
 		case ResponseCode.FAULTY_IUC:
-			throw new DataException("Faulty IUC", "Check that the contactless reader is connected.");
-
 		case ResponseCode.FAULTY_IUR:
-			throw new DataException("Faulty IUR", "Check that the contact reader is connected.");
+		case ResponseCode.AUTHORISATION_REQUEST_TIMEOUT:
+		case ResponseCode.CALLBACK_DISPLAY_MESSAGE:
+			throw new DataException("Problem with terminal", "There is an issue with the terminal. Please contact NETS.");
+
+		case ResponseCode.TERMINAL_CONNECTION_PROBLEM:
+			throw new DataException("Terminal connection problem", "Make sure the terminal is connected to the internet (Ethernet, SIM Card etc.)");
+
+		case ResponseCode.LOGON_REQUIRED:
+			throw new DataException("Unable to log on", "Please restart the computer, or contact NETS.");
 
 		case ResponseCode.THIRD_PARTY_APP_NOT_AVAILABLE:
 			throw new DataException("Third-party app not available", "Check with the terminal provider on application loading.");
@@ -328,17 +435,47 @@ public interface NetsService {
 		case ResponseCode.MANDATORY_FIELD_CODE_MISSING:
 			throw new DataException("Mandatory field code missing", "Check the message being sent to the terminal");
 
-		case ResponseCode.TERMINAL_CONNECTION_PROBLEM:
-			throw new DataException("Terminal connection problem", "Make sure the terminal is connected to the internet (Ethernet, SIM Card etc.)");
-
-		case ResponseCode.AUTHORISATION_REQUEST_TIMEOUT:
-			throw new DataException("Authorisation request timeout", "The authorisation request did not receive a response. Please contact NETS.");
-
-		case ResponseCode.SETTLEMENT_REQUIRED:
-			throw new DataException("Settlement required", "Terminal requires settlement for all acquirers.");
+		case ResponseCode.FUNCTION_NOT_AVAILABLE:
+			throw new DataException("Function not available", "The function specified does not exist.");
 
 		default:
-			return handleResponseExtended(respCode);
+			throw new DataException("Unknown response", "Unknown response while requesting terminal status: `" + respCode + "`. Please contact admin.");
+		}
+	}
+
+	default Codes getPaymentCodes(PaymentMethod method) {
+		Codes codes = new Codes();
+		codes.version = VersionCode.NETS;
+
+		switch(method) {
+		case NETS:
+			codes.function = FunctionCode.NETS_PURCHASE;
+			return codes;
+		case CREDIT_CARD:
+			codes.function = FunctionCode.CREDIT_CARD_PURCHASE;
+			return codes;
+
+		case UNIONPAY:
+			codes.function = FunctionCode.UPI_PURCHASE;
+			return codes;
+
+		case BCA:
+			codes.function = FunctionCode.BCA_PURCHASE;
+			return codes;
+
+		case RUPAY:
+			codes.function = FunctionCode.RUPAY_PURCHASE;
+			return codes;
+
+		case MYDEBIT:
+			codes.function = FunctionCode.MYDEBIT_PURCHASE;
+			return codes;
+
+		case DEBIT_CARD:
+			codes.version = VersionCode.UOB;
+			return codes;
+		default:
+			return null;
 		}
 	}
 }

@@ -1,6 +1,5 @@
-package com.devourin.payment.config;
+package com.devourin.payment.bean;
 
-import java.net.URISyntaxException;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,29 +9,26 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.client.RestTemplate;
 
-import com.devourin.payment.bean.PaymentDeviceList;
 import com.devourin.payment.model.PaymentDevice;
 import com.devourin.payment.util.EnvironmentUtil;
 
 @Configuration
-public class PaymentDeviceListConfig {
+public class PaymentDeviceListBean {
 
 	@Autowired
 	private RestTemplate restTemplate;
 
 	@Bean
-	public PaymentDeviceList paymentDeviceList() throws URISyntaxException {
+	public List<PaymentDevice> paymentDeviceList() {
 		String baseUrl = EnvironmentUtil.getServerUrl();
 		String terminalId = EnvironmentUtil.getTerminalId();
 
-		List<PaymentDevice> deviceList = restTemplate.exchange(
+		return restTemplate.exchange(
 				baseUrl + "/payment/getDeviceList?terminalId=" + terminalId,
 				HttpMethod.GET,
 				null,
 				new ParameterizedTypeReference<List<PaymentDevice>>() {}
 				).getBody();
-
-		return new PaymentDeviceList(deviceList);
 	}
 
 }

@@ -2,16 +2,22 @@ package com.devourin.payment.service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.function.Predicate;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.devourin.payment.constant.Model;
+import com.devourin.payment.constant.PaymentMethod;
 import com.devourin.payment.exception.DataException;
 import com.devourin.payment.exception.PortInUseException;
+import com.devourin.payment.model.DevicePortMapping;
 import com.devourin.payment.model.PaymentDevice;
 import com.devourin.payment.model.PaymentInfo;
+import com.devourin.payment.util.NumberUtil;
 import com.devourin.payment.util.Rs232Util;
 import com.fazecast.jSerialComm.SerialPort;
 import com.fazecast.jSerialComm.SerialPortInvalidPortException;
@@ -19,147 +25,111 @@ import com.fazecast.jSerialComm.SerialPortInvalidPortException;
 @Service
 public class NetsRs232Service implements NetsService {
 
-	private final Predicate<byte[]> checkLrc = (arr) -> checkLrc(arr, 1);
+	@Autowired
+	Map<Model, Map<String, Long>> paymentIdMap;
+
+	@Autowired
+	Map<String, DevicePortMapping> openPorts;
+
+	@Autowired
+	PaymentMessagingService paymentMessagingService;
+
+	private final Predicate<byte[]> checkLrc = arr -> checkLrc(arr, 1);
 
 	@Override
-	public void createPayment(PaymentInfo body, PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException,
-	PortInUseException, IOException {
-		SerialPort port = connectPort(paymentDevice.getAddress());
-		// If there is an error while opening the port, there is no need to close it
-		try {
-			byte[] resp = requestDeviceStatus(port);
+	public PaymentMessagingService getPaymentMessagingService() {
+		return paymentMessagingService;
+	}
 
-			handleResponse(resp);
-
-			//			byte[] message = createRs232Message(new byte[1]); // TODO
-			//			byte[] response = new byte[1]; // TODO: set response size
-			//			
-			//			
-			//			Rs232Util.sendAndReceiveRs232MessageWithCheck(port, message, response, 3, checkLrcRs232);
-
-			// TODO: check response and handle
-		} catch(Exception e) {
-			throw e;
-		} finally {
-			port.closePort();
-		}
-
+	public void test(PaymentDevice paymentDevice, ListeningService listeningService) throws PortInUseException, SerialPortInvalidPortException, IOException {
+		requestDeviceStatus(paymentDevice, listeningService);
 	}
 
 	@Override
-	public void logonToDevice(PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException,
+	public void createPayment(PaymentInfo body, PaymentDevice paymentDevice, ListeningService listeningService) throws SerialPortInvalidPortException,
 	PortInUseException, IOException {
-		SerialPort port = connectPort(paymentDevice.getAddress());
-		// If there is an error while opening the port, there is no need to close it
-		try {
-			handleResponse(logonToDevice(port));
+		SerialPort port = getPort(paymentDevice, listeningService);
 
-			// TODO
+		Codes codes = getPaymentCodes(body.getPaymentMethod());
 
-			return;
-
-		} catch(Exception e) {
-			throw e;
-
-		} finally {
-			port.closePort();
-		}
-
-	}
-
-	@Override
-	public void getLastApprovedTransaction(PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException,
-	PortInUseException, IOException {
-		SerialPort port = connectPort(paymentDevice.getAddress());
-
-		try {
-			byte[] message = getLastApprovedTransaction(port);
+		byte[] message = concatByteArrays(
+				createMessageHeader(codes.getFunction(), codes.getVersion(), paymentIdMap),
+				createMessageData(FieldCode.TRANSACTION_AMOUNT, NumberUtil.padNumberWithZeroes(BigDecimal.valueOf(body.getAmount()), 12))
+				);
+		if(body.getPaymentMethod() == PaymentMethod.NETS) {
+			message = concatByteArrays(message, createMessageData(FieldCode.TRANSACTION_TYPE_INDICATOR, "01"));
 			
-			handleResponse(message);
-			
-			Map<String, byte[]> mapBody = getBodyMapFromMessage(message);
-
-			handleTransactionResponse(mapBody);
-
-			return;
-
-		} catch(Exception e) {
-			throw e;
-
-		} finally {
-			port.closePort();
 		}
-
+		sendMessage(port, createMessage(message));
 	}
 
 	@Override
-	public byte[] callTMS(PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException,
+	public void requestDeviceStatus(PaymentDevice paymentDevice, ListeningService listeningService) throws SerialPortInvalidPortException,
 	PortInUseException, IOException {
+		SerialPort port = getPort(paymentDevice, listeningService);
 
-		SerialPort port = connectPort(paymentDevice.getAddress());
-
-		try {
-			byte[] message =  sendMessageOnlyHeader(FunctionCode.TMS, port, 23);
-			return message;
-
-			// TODO
-		} catch (Exception e) {
-			throw e;
-		} finally {
-			port.closePort();
-		}
+		requestDeviceStatus(port);
 	}
 
 	@Override
-	public void performSettlements(PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException,
+	public void logonToDevice(PaymentDevice paymentDevice, ListeningService listeningService) throws SerialPortInvalidPortException,
 	PortInUseException, IOException {
-		SerialPort port = connectPort(paymentDevice.getAddress());
+		SerialPort port = getPort(paymentDevice, listeningService);
 
-		try {
-			byte[] message = performSettlement(port);
-			handleResponse(message);
-
-			// TODO
-
-			return;
-
-		} catch(Exception e) {
-			throw e;
-
-		} finally {
-			port.closePort();
-		}
+		logonToDevice(port);
 	}
 
-	private byte[] sendMessageOnlyHeader(String functionCode, SerialPort port, int length) throws IOException {
-		byte[] message = createMessage(createMessageHeader(functionCode, VersionCode.NETS));
-		byte[] response = new byte[length];
+	@Override
+	public void getLastApprovedTransaction(PaymentDevice paymentDevice, ListeningService listeningService) throws SerialPortInvalidPortException,
+	PortInUseException, IOException {
+		SerialPort port = getPort(paymentDevice, listeningService);
 
-		sendAndReceiveMessage(port, message, response);
-
-		return response;
+		getLastApprovedTransaction(port);
 	}
 
-	private void sendAndReceiveMessage(SerialPort port, byte[] message, byte[] response) throws IOException {
+	@Override
+	public void callTMS(PaymentDevice paymentDevice, ListeningService listeningService) throws SerialPortInvalidPortException,
+	PortInUseException, IOException {
+		SerialPort port = getPort(paymentDevice, listeningService);
+
+		sendMessageOnlyHeader(FunctionCode.TMS, port);
+	}
+
+	@Override
+	public void performSettlements(PaymentDevice paymentDevice, ListeningService listeningService) throws SerialPortInvalidPortException,
+	PortInUseException, IOException {
+		SerialPort port = getPort(paymentDevice, listeningService);
+
+		performSettlement(port);
+	}
+
+	private void sendMessageOnlyHeader(String functionCode, SerialPort port) throws IOException {
+		byte[] message = createMessage(createMessageHeader(functionCode, VersionCode.NETS, paymentIdMap));
+
+		sendMessage(port, message);
+	}
+
+	private void sendMessage(SerialPort port, byte[] message) throws IOException {
 		port.flushIOBuffers();
-		Rs232Util.sendWithAckCheck(port, message, totalTries);
-		receiveMessage(port, response);
+		Rs232Util.sendWithAckCheck(port, message, TOTAL_TRIES);
 	}
 
-	private byte[] requestDeviceStatus(SerialPort port) throws IOException {
-		return sendMessageOnlyHeader(FunctionCode.REQUEST_TERMINAL_STATUS, port, 23);
+	private void requestDeviceStatus(SerialPort port) throws IOException {
+		sendMessageOnlyHeader(FunctionCode.REQUEST_TERMINAL_STATUS, port);
+		// len 23
 	}
 
-	private byte[] logonToDevice(SerialPort port) throws IOException {
-		return sendMessageOnlyHeader(FunctionCode.LOGON, port, 215);
+	private void logonToDevice(SerialPort port) throws IOException {
+		sendMessageOnlyHeader(FunctionCode.LOGON, port);
+		// len 215
 	}
 
-	private byte[] getLastApprovedTransaction(SerialPort port) throws IOException {
-		return sendMessageOnlyHeader(FunctionCode.GET_LAST_APPROVED_TRANSACTION, port, 512);
+	private void getLastApprovedTransaction(SerialPort port) throws IOException {
+		sendMessageOnlyHeader(FunctionCode.GET_LAST_APPROVED_TRANSACTION, port);
 	}
 
-	private byte[] performSettlement(SerialPort port) throws IOException {
-		return sendMessageOnlyHeader(FunctionCode.SETTLEMENT, port, 1024);
+	private void performSettlement(SerialPort port) throws IOException {
+		sendMessageOnlyHeader(FunctionCode.SETTLEMENT, port);
 	}
 
 	@Override
@@ -178,55 +148,17 @@ public class NetsRs232Service implements NetsService {
 		// Setting LRC
 		return addLrc(message, 1);  // Start from 1 because we do not count STX
 	}
-	
+
 	@Override
 	public byte[] generateHomogenisedMessage(byte[] message) {
-		byte[] newArray = Rs232Util.truncateMessage(message);
-		return Arrays.copyOfRange(newArray, 3, message.length - 1);
+		return Arrays.copyOfRange(message, 3, message.length - 1);
 	}
 
-	@Override
-	public String handleResponseExtended(String respCode) throws DataException {
-
-		switch(respCode) {
-		case ResponseCode.AUTHORISATATION_REQUEST_DECLINED:
-			// TODO
-			throw new DataException("Authorisation request declined", "Please refer to field code HC for more information");
-
-		case ResponseCode.UNABLE_TO_READ_CARD:
-			// TODO
-			throw new DataException("Unable to read card", "Make sure the card was inserted/swiped/tapped correctly");
-
-		case ResponseCode.INVALID_CARD:
-			// TODO
-			throw new DataException("Invalid card", "Make sure the card used was valid");
-
-		case ResponseCode.LOGON_REQUIRED:
-			// TODO
-			throw new DataException("Unable to log on", "The application was not able to log on the terminal.");
-			//			return;
-
-		case ResponseCode.CALLBACK_DISPLAY_MESSAGE:
-			// TODO
-			throw new DataException("Authorisation request timeout w/ Callback", "The authorisation request did not receive a response. Please contact NETS.");
-
-		case ResponseCode.CALLBACK_CARD_APP_SELECTION:
-			// TODO
-			throw new DataException("Card app selection callback", "Prompt user to select which credit card scheme app should be used for the application.");
-
-		default:
-			throw new DataException("Unknown response", "Unknown response while requesting terminal status: `" + respCode + "`. Please contact admin.");
-		}
+	private SerialPort connectPort(String portName, ListeningService listeningService) throws PortInUseException, SerialPortInvalidPortException {
+		return Rs232Util.connect(portName, 9600, 8, 1, SerialPort.NO_PARITY, 1800, listeningService, true, false);
 	}
 
-	private SerialPort connectPort(String portName) throws PortInUseException, SerialPortInvalidPortException {
-		return Rs232Util.connect(portName, 9600, 8, 1, SerialPort.NO_PARITY, 1800, true, false);
-	}
-
-	private void receiveMessage(SerialPort port, byte[] response) throws IOException {
-		Rs232Util.readWithAckCheck(port, response, totalTries, checkLrc);
-
-
+	public void receiveMessage(ListeningService listeningService, byte[] response, SerialPort port, PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException, PortInUseException, IOException {
 		/*
 		 * The following code is to make sure that only one message is in a response.
 		 * 
@@ -251,10 +183,39 @@ public class NetsRs232Service implements NetsService {
 			case 2:
 				response[i] = 0;
 				break;
+
+			default:
 			}
 		}
-		
-		response = generateHomogenisedMessage(response);
+
+		response = Rs232Util.truncateMessage(response);
+
+		boolean isCorrect = checkLrc.test(response);
+
+		byte[] returnedValue = {isCorrect ? Rs232Util.ACK : Rs232Util.NACK};
+
+		port.writeBytes(returnedValue, 1);
+
+		if(isCorrect) {
+			handleAsyncMessageHandling(listeningService, response, paymentIdMap, paymentDevice);
+		}
+	}
+
+	SerialPort getPort(PaymentDevice paymentDevice, ListeningService listeningService) throws SerialPortInvalidPortException, PortInUseException {
+		String portName = paymentDevice.getAddress();
+
+		if(openPorts.containsKey(portName)) {
+			SerialPort port = openPorts.get(portName).getSerialPort();
+			if(port.isOpen()) {
+				return port;
+			}
+		}
+
+		// Come here if there is no port in the map, or if the port has closed
+
+		SerialPort port = connectPort(portName, listeningService);
+		openPorts.put(portName, new DevicePortMapping(paymentDevice, port));
+		return port;
 	}
 
 }

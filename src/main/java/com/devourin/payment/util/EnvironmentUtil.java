@@ -1,6 +1,7 @@
 package com.devourin.payment.util;
 
 public class EnvironmentUtil {
+	private EnvironmentUtil() {}
 
 	public static String getTerminalId() {
 		return System.getenv("DEVOURIN_TERMINAL");

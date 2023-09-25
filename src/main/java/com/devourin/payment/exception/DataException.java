@@ -8,6 +8,12 @@ public class DataException extends Exception {
 	private static final long serialVersionUID = 9170999793382310074L;
 
 	String error;
+	
+	public DataException() {}
+	
+	public DataException(String message, Throwable cause) {
+		super(message, cause);
+	}
 
 	public DataException(String message) {
 		super(message, null);

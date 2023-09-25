@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.devourin.payment.util.EnvironmentUtil;
 
 @RestController
-@RequestMapping("/devourin-payment/v1/env")
+@RequestMapping("/api")
 public class EnvironmentController {
 
 	/*
@@ -21,14 +21,14 @@ public class EnvironmentController {
 	 * DO NOT ACCESS SYSTEM VARIABLES THROUGH YOUR OWN ENV VARIABLES.
 	 * DO NOT EXPOSE SENSITIVE DATA.
 	 */
-	@GetMapping("/terminalId")
-	public ResponseEntity<?> getTerminalId() {
+	@GetMapping("/v1/env/terminalId")
+	public ResponseEntity<Map<String, String>> getTerminalId() {
 		Map<String, String> resp = Map.of("terminalId", EnvironmentUtil.getTerminalId());
 		return ResponseEntity.ok(resp);
 	}
 
-	@GetMapping("/serverUrl")
-	public ResponseEntity<?> getServerUrl() {
+	@GetMapping("/v1/env/serverUrl")
+	public ResponseEntity<Map<String, String>> getServerUrl() {
 		Map<String, String> resp = Map.of("serverUrl", EnvironmentUtil.getServerUrl());
 		return ResponseEntity.ok(resp);
 	}

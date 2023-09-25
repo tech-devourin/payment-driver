@@ -1,106 +1,123 @@
 package com.devourin.payment.controller;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.stereotype.Controller;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import com.devourin.payment.bean.PaymentDeviceList;
+import com.devourin.payment.constant.Model;
+import com.devourin.payment.exception.CouldNotProcessException;
 import com.devourin.payment.exception.DataException;
 import com.devourin.payment.exception.PortInUseException;
+import com.devourin.payment.model.DevicePortMapping;
 import com.devourin.payment.model.PaymentDevice;
 import com.devourin.payment.model.PaymentInfo;
+import com.devourin.payment.service.ListeningService;
 import com.devourin.payment.service.NetsRs232Service;
 import com.devourin.payment.service.NetsService;
+import com.devourin.payment.service.PaymentMessagingService;
 import com.devourin.payment.util.Rs232Util;
 import com.fazecast.jSerialComm.SerialPortInvalidPortException;
 
-@Controller
-@RequestMapping("/payment")
-@MessageMapping("/payment") // Required for websockets
+@RestController
+@EnableAsync(proxyTargetClass = true)
+@EnableScheduling
+@EnableAspectJAutoProxy(proxyTargetClass = true)
+@RequestMapping("/api")
+@MessageMapping("/ws") // Required for websockets
 public class PaymentController {
 
 	@Autowired
 	NetsRs232Service netsRs232Service;
-	//	NetsEthernetService netsServiceEthernet = new NetsEthernetService();
+
+	// @Autowired
+	//	NetsEthernetService netsEthernetService;
 
 	@Autowired
-	SimpMessagingTemplate messagingTemplate;
-	
+	ListeningService listeningService;
+
 	@Autowired
-	PaymentDeviceList paymentDeviceList;
+	List<PaymentDevice> paymentDeviceList;
 
-//  // The mapping for this message API is `/app/payment/test`
-//	@MessageMapping("/test")
-//	public void sendDetails(Map<String, String> msg) throws Exception {
-//		messagingTemplate.convertAndSend("/terminal/queue/payment-user" + msg.get("to"), msg);
-//	}
+	@Autowired
+	Map<Model, Map<String, Long>> paymentIdMap;
 
+	@Autowired
+	Map<String, DevicePortMapping> openPorts;
 
-	@PostMapping("/createPayment")
-	public ResponseEntity<?> createPayment(@RequestBody PaymentInfo body) {
+	@Autowired
+	PaymentMessagingService paymentMessagingService;
+
+	// The mapping for this message API is `/app/ws/v1/payment`
+	@MessageMapping("/v1/payment")
+	public void createPayment(PaymentInfo body) {
 		try {
 			validatePaymentInfo(body);
+			boolean isFree = false;
 
-			boolean notPaid = true;
-			List<PaymentDevice> paymentDevices = paymentDeviceList.getList();
-
-			for(int i = 0; i < paymentDevices.size() && notPaid; i++) {
-				PaymentDevice paymentDevice = paymentDevices.get(i);
-
-				try {
-					switch(paymentDevice.getModel()) {
-					case "NETS":
-						NetsService netsService = getNetsService(paymentDevice, i);
-						netsService.createPayment(body, paymentDevice);
-
-						// Will not reach if there is an error in the createPayment function
-						notPaid = false; // TODO
-					}
-
-				} catch (PortInUseException e) {
-					e.printStackTrace();
-					// Goes to the next iteration to check for a free device
-				} catch (IOException e) {
-					e.printStackTrace();
-					return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body("There was an issue while communicating with the device");
-				}
+			for(int i = 0; i < paymentDeviceList.size() && !isFree; i++) {
+				isFree = createPayment(paymentDeviceList.get(i), body, i); 
 			}
 
-			if(notPaid) {
-				return ResponseEntity.ok("There were no free payment devices for this terminal.");
+			// Was not able to complete
+			if(!isFree) {
+				throw new CouldNotProcessException("None of the devices connected to this terminal were free");
 			}
 
 		} catch (DataException e) {
-			return ResponseEntity.badRequest().body(e.toMap());
+			paymentMessagingService.sendWebsocketDataError(e);
+		} catch (Exception e) {
+			paymentMessagingService.sendWebsocketError(e);
 		}
-		return ResponseEntity.ok(null);
 	}
 
-	@PostMapping("/login")
-	public ResponseEntity<?> login() {
-		List<Map<String, String>> errors = new ArrayList<>();
-		List<PaymentDevice> paymentDevices = paymentDeviceList.getList();
+	private boolean createPayment(PaymentDevice paymentDevice, PaymentInfo body, int iteration) throws IOException, DataException {
+		try {
+			switch(paymentDevice.getModel()) {
+			case NETS:
+				NetsService netsService = getNetsService(paymentDevice, iteration);
+				netsService.createPayment(body, paymentDevice, listeningService);
+			}
 
-		for(int i = 0; i < paymentDevices.size(); i++) {
-			PaymentDevice paymentDevice = paymentDevices.get(i);
+			return true;
+
+		} catch (PortInUseException e) {
+			// Goes to the next iteration to check for a free device
+			return false;
+		}
+	}
+
+	public void login() {
+		List<Map<String, String>> errors = new ArrayList<>();
+
+		for(int i = 0; i < paymentDeviceList.size(); i++) {
+			PaymentDevice paymentDevice = paymentDeviceList.get(i);
 
 			try {
+
 				switch(paymentDevice.getModel()) {
-				case "NETS":
+				case NETS:
 					NetsService netsService = getNetsService(paymentDevice, i);
-					netsService.logonToDevice(paymentDevice);
+					netsService.callTMS(paymentDevice, listeningService);
 					break;
 				}
 
@@ -115,18 +132,17 @@ public class PaymentController {
 				errors.add(err);
 			}
 		}
-		return ResponseEntity.ok(errors);
 	}
 
 	@GetMapping("/tms")
-	public ResponseEntity<?> callTMS(@RequestBody PaymentDevice paymentDevice) throws SerialPortInvalidPortException, PortInUseException, IOException {
+	public ResponseEntity<Object> callTMS(@RequestBody PaymentDevice paymentDevice) throws SerialPortInvalidPortException, PortInUseException, IOException {
 		try {
 			byte[] message = {};
 
 			switch(paymentDevice.getModel()) {
-			case "NETS":
+			case NETS:
 				NetsService netsService = getNetsService(paymentDevice, 0);
-				message = netsService.callTMS(paymentDevice);
+				netsService.callTMS(paymentDevice, listeningService);
 				break;
 			}
 
@@ -146,20 +162,54 @@ public class PaymentController {
 		if(body == null) {
 			throw new DataException("Missing body", "Please provide payment information.");
 		}
-		if(body.getAmount() == null) {
+		if(body.getAmount() == null || body.getAmount() <= 0) {
 			throw new DataException("Missing payment value", "Please send the amount to pay");
 		}
+		if(body.getPaymentMethod() == null) {
+			throw new DataException("Missing payment method", "Please include the method of payment");
+		}
+
 	}
 
 	private NetsService getNetsService(PaymentDevice paymentDevice, int index) throws DataException {
 		switch(paymentDevice.getProtocol()) {
-		case "RS232":
+		case RS232:
 			return netsRs232Service;
 
-		case "Ethernet":
-			//return netsServiceEthernet;
+		case ETHERNET:
+			//			return netsServiceEthernet;
 		default:
 			throw new DataException("Invalid Device Protocol", "The protocol for the device at index " + index + " is invalid. Please contact your server admin.");
 		}
 	}
+
+	// Login to all the devices attached to make them ready.
+	@EventListener
+	public void onApplicationEvent(ApplicationReadyEvent event) {
+		login();
+	}
+
+	/**
+	 * Runs every hour to clean up {@link NetsService#ecnWaitingForResponse}
+	 */
+	@Async
+	@Scheduled(fixedRate=1, initialDelay=1, timeUnit = TimeUnit.HOURS)
+	void checkIdMap() {
+		Model[] keys = Model.values();
+		long currentTime = Instant.now().getEpochSecond();
+
+		for(int i = 0; i < keys.length; i++) { // For every model
+			Map<String, Long> ids = paymentIdMap.get(keys[i]);
+			Set<String> idSet = ids.keySet();
+			Iterator<String> it = idSet.iterator();
+			while(it.hasNext()) {
+				String id = it.next();
+				Long time = ids.get(id);
+				if(currentTime - time > 600_000) { // more than 10 minutes ago
+					ids.remove(id);
+				}
+			}
+		}
+	}
+
 }
