@@ -115,6 +115,10 @@ public class Rs232Util {
 	}
 
 	private static void sendMessage(SerialPort port, byte[] message, int totalTries, boolean skipCheck) throws IOException {
+	
+		if(!port.isOpen()) {
+			throw new IOException("The port is closed");
+		}
 
 		byte[] check = {0x00};
 		port.flushIOBuffers();
@@ -187,7 +191,7 @@ public class Rs232Util {
 		return truncatedArray;
 	}
 
-	public static String getHexString(byte[] message) {
+	public static String getHexString(byte... message) {
 		StringBuilder sb = new StringBuilder();
 		for(byte b : message) {
 
@@ -195,6 +199,6 @@ public class Rs232Util {
 
 			sb.append(String.format("%x ", b));
 		}
-		return sb.toString();
+		return sb.toString().stripTrailing();
 	}
 }

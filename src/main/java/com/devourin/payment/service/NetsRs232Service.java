@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import com.devourin.payment.constant.Model;
 import com.devourin.payment.constant.PaymentMethod;
 import com.devourin.payment.exception.DataException;
+import com.devourin.payment.exception.DeviceException;
+import com.devourin.payment.exception.NeedToRestartPaymentException;
 import com.devourin.payment.exception.PortInUseException;
 import com.devourin.payment.model.DevicePortMapping;
 import com.devourin.payment.model.PaymentDevice;
@@ -41,13 +43,9 @@ public class NetsRs232Service implements NetsService {
 		return paymentMessagingService;
 	}
 
-	public void test(PaymentDevice paymentDevice, ListeningService listeningService) throws PortInUseException, SerialPortInvalidPortException, IOException {
-		requestDeviceStatus(paymentDevice, listeningService);
-	}
-
 	@Override
 	public void createPayment(PaymentInfo body, PaymentDevice paymentDevice, ListeningService listeningService) throws SerialPortInvalidPortException,
-	PortInUseException, IOException {
+	PortInUseException, IOException, DataException {
 		SerialPort port = getPort(paymentDevice, listeningService);
 
 		Codes codes = getPaymentCodes(body.getPaymentMethod());
@@ -158,7 +156,7 @@ public class NetsRs232Service implements NetsService {
 		return Rs232Util.connect(portName, 9600, 8, 1, SerialPort.NO_PARITY, 1800, listeningService, true, false);
 	}
 
-	public void receiveMessage(ListeningService listeningService, byte[] response, SerialPort port, PaymentDevice paymentDevice) throws DataException, SerialPortInvalidPortException, PortInUseException, IOException {
+	public void receiveMessage(ListeningService listeningService, byte[] response, SerialPort port, PaymentDevice paymentDevice) throws SerialPortInvalidPortException, PortInUseException, IOException, NeedToRestartPaymentException, DeviceException {
 		/*
 		 * The following code is to make sure that only one message is in a response.
 		 * 

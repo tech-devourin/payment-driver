@@ -4,9 +4,9 @@ import com.devourin.payment.constant.Model;
 import com.devourin.payment.constant.Protocol;
 
 public class PaymentDevice {
-	Protocol protocol;
-	String address;
-	Model model;
+	private Protocol protocol;
+	private String address;
+	private Model model;
 
 	public Protocol getProtocol() {
 		return protocol;

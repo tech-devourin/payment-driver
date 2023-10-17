@@ -1,9 +1,9 @@
 package com.devourin.payment.model;
 
 public class ApiResponse {
-	String status;
-	Object error;
-	Object data;
+	private String status;
+	private Object error;
+	private Object data;
 	
 	private ApiResponse() {}
 	

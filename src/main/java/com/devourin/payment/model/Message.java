@@ -5,9 +5,9 @@ import java.util.Map;
 import com.devourin.payment.constant.WebsocketStatus;
 
 public class Message<T> {
-	T data;
-	int status;
-	Map<String, String> error;
+	private T data;
+	private int status;
+	private Map<String, String> error;
 
 	public Message() {}
 
@@ -27,6 +27,14 @@ public class Message<T> {
 
 	public static <T> Message<T> error(Map<String, String> error, T data) {
 		return new Message<>(data, WebsocketStatus.BAD_REQUEST, error);
+	}
+
+	public static Message<Object> resendMessage(Map<String, String> error) {
+		return new Message<>(null, WebsocketStatus.RESEND_MESSAGE, error);
+	}
+
+	public static <T> Message<T> resendMessage(Map<String, String> error, T data) {
+		return new Message<>(data, WebsocketStatus.RESEND_MESSAGE, error);
 	}
 
 	public T getData() {

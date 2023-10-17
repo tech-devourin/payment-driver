@@ -6,4 +6,5 @@ public class WebsocketStatus {
 
 	public static final int SUCCESS = 4000;
 	public static final int BAD_REQUEST = 4001;
+	public static final int RESEND_MESSAGE = 4002;
 }

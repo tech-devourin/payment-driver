@@ -10,7 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import com.devourin.payment.exception.DataException;
+import com.devourin.payment.exception.DeviceException;
+import com.devourin.payment.exception.NeedToRestartPaymentException;
 import com.devourin.payment.exception.PortInUseException;
 import com.devourin.payment.model.DevicePortMapping;
 import com.devourin.payment.model.PaymentDevice;
@@ -90,10 +91,12 @@ public class ListeningService implements SerialPortDataListener {
 				break;
 			default:
 				break;
-
 			}
-		} catch(DataException e) {
-			paymentMessagingService.sendWebsocketDataError(e);
+
+		} catch (NeedToRestartPaymentException e) {
+			paymentMessagingService.sendWebsocketDevourinResendMessage(e);
+		} catch(DeviceException e) {
+			paymentMessagingService.sendWebsocketDevourinError(e);
 		} catch (SerialPortInvalidPortException | PortInUseException | IOException e) {
 			paymentMessagingService.sendWebsocketError(e);
 		}

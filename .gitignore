@@ -32,3 +32,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Installer Folder ###
+/(NOT JAVA) Devourin Payment Installer Maker/*.jar
+/(NOT JAVA) Devourin Payment Installer Maker/*.exe
+# Exception because we need nssm.exe to run the service
+!/(NOT JAVA) Devourin Payment Installer Maker/nssm.exe

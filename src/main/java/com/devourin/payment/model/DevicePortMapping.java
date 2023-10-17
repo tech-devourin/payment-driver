@@ -3,8 +3,8 @@ package com.devourin.payment.model;
 import com.fazecast.jSerialComm.SerialPort;
 
 public class DevicePortMapping {
-	SerialPort serialPort;
-	PaymentDevice paymentDevice;
+	private SerialPort serialPort;
+	private PaymentDevice paymentDevice;
 
 	public DevicePortMapping() {}
 
